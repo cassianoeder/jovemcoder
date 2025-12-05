@@ -13,6 +13,9 @@ import ManageLessons from "./pages/teacher/ManageLessons";
 import ManageExercises from "./pages/teacher/ManageExercises";
 import ManageQuestions from "./pages/teacher/ManageQuestions";
 import ManageUsers from "./pages/teacher/ManageUsers";
+import ManageClasses from "./pages/teacher/ManageClasses";
+import ManageCourses from "./pages/teacher/ManageCourses";
+import ManageModules from "./pages/teacher/ManageModules";
 import CoordinatorDashboard from "./pages/coordinator/CoordinatorDashboard";
 import NotFound from "./pages/NotFound";
 
@@ -30,6 +33,9 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />
             <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><TeacherDashboard /></ProtectedRoute>} />
+            <Route path="/teacher/classes" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageClasses /></ProtectedRoute>} />
+            <Route path="/teacher/courses" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageCourses /></ProtectedRoute>} />
+            <Route path="/teacher/modules" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageModules /></ProtectedRoute>} />
             <Route path="/teacher/lessons" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageLessons /></ProtectedRoute>} />
             <Route path="/teacher/exercises" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageExercises /></ProtectedRoute>} />
             <Route path="/teacher/questions" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ManageQuestions /></ProtectedRoute>} />
