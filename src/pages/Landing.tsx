@@ -10,7 +10,7 @@ const Landing = () => {
             <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center">
               <Code2 className="w-6 h-6 text-primary-foreground" />
             </div>
-            <span className="font-display text-xl font-bold text-foreground">CodeQuest</span>
+            <span className="font-display text-xl font-bold text-foreground">JovemCoder</span>
           </Link>
           
           <div className="hidden md:flex items-center gap-8">
@@ -37,13 +37,13 @@ const Landing = () => {
         <div className="container mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2 mb-6">
             <Flame className="w-4 h-4 text-streak" />
-            <span className="text-sm text-foreground">+10.000 alunos aprendendo código</span>
+            <span className="text-sm text-foreground">+10 alunos aprendendo código</span>
           </div>
           
           <h1 className="font-display text-5xl md:text-7xl font-bold text-foreground mb-6 leading-tight">
             Aprenda a programar
             <br />
-            <span className="text-gradient-primary">jogando</span>
+            <span className="text-gradient-primary">se divertindo</span>
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
@@ -65,11 +65,11 @@ const Landing = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
             {[{
             icon: Users,
-            value: "10K+",
+            value: "10+",
             label: "Alunos Ativos"
           }, {
             icon: BookOpen,
-            value: "500+",
+            value: "50+",
             label: "Exercícios"
           }, {
             icon: Trophy,
