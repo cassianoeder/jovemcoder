@@ -58,10 +58,7 @@ const Landing = () => {
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>
-            <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-border/50">
-              Ver Demo
-              <Gamepad2 className="ml-2 w-5 h-5" />
-            </Button>
+            
           </div>
 
           {/* Stats */}
