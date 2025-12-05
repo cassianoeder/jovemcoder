@@ -108,7 +108,7 @@ const Auth = () => {
           <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center">
             <Code2 className="w-7 h-7 text-primary-foreground" />
           </div>
-          <span className="font-display text-2xl font-bold text-foreground">CodeQuest</span>
+          <span className="font-display text-2xl font-bold text-foreground">JovemCoder</span>
         </Link>
 
         <Card className="glass border-border/50">
