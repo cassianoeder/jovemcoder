@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,10 +8,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Code2, Mail, Lock, User, GraduationCap, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+
+type AppRole = 'student' | 'teacher' | 'coordinator';
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("mode") === "register" ? "register" : "login";
+  const navigate = useNavigate();
+  const { user, role, signIn, signUp, loading: authLoading } = useAuth();
   
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,35 +30,88 @@ const Auth = () => {
   const [registerName, setRegisterName] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
-  const [registerRole, setRegisterRole] = useState("");
+  const [registerRole, setRegisterRole] = useState<AppRole | "">("");
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && role && !authLoading) {
+      const roleRoutes: Record<string, string> = {
+        student: '/student',
+        teacher: '/teacher',
+        coordinator: '/coordinator',
+        admin: '/coordinator',
+      };
+      navigate(roleRoutes[role] || '/student');
+    }
+  }, [user, role, authLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate login - will be replaced with Supabase auth
-    setTimeout(() => {
-      setIsLoading(false);
+    const { error } = await signIn(loginEmail, loginPassword);
+    
+    if (error) {
       toast({
-        title: "Backend necessário",
-        description: "Ative o Lovable Cloud para habilitar autenticação.",
+        title: "Erro ao entrar",
+        description: error.message === "Invalid login credentials" 
+          ? "Email ou senha incorretos" 
+          : error.message,
+        variant: "destructive",
       });
-    }, 1000);
+    } else {
+      toast({
+        title: "Bem-vindo de volta!",
+        description: "Login realizado com sucesso.",
+      });
+    }
+    
+    setIsLoading(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!registerRole) {
+      toast({
+        title: "Erro",
+        description: "Por favor, selecione seu perfil.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoading(true);
     
-    // Simulate register - will be replaced with Supabase auth
-    setTimeout(() => {
-      setIsLoading(false);
+    const { error } = await signUp(registerEmail, registerPassword, registerName, registerRole);
+    
+    if (error) {
+      let errorMessage = error.message;
+      if (error.message.includes("already registered")) {
+        errorMessage = "Este email já está cadastrado. Tente fazer login.";
+      }
       toast({
-        title: "Backend necessário",
-        description: "Ative o Lovable Cloud para habilitar autenticação.",
+        title: "Erro ao criar conta",
+        description: errorMessage,
+        variant: "destructive",
       });
-    }, 1000);
+    } else {
+      toast({
+        title: "Conta criada!",
+        description: "Sua conta foi criada com sucesso.",
+      });
+    }
+    
+    setIsLoading(false);
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-hero dark flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-hero dark flex items-center justify-center p-4">
@@ -168,11 +226,11 @@ const Auth = () => {
                       <Input
                         id="register-password"
                         type={showPassword ? "text" : "password"}
-                        placeholder="Mínimo 8 caracteres"
+                        placeholder="Mínimo 6 caracteres"
                         className="pl-10 pr-10"
                         value={registerPassword}
                         onChange={(e) => setRegisterPassword(e.target.value)}
-                        minLength={8}
+                        minLength={6}
                         required
                       />
                       <button
@@ -187,7 +245,7 @@ const Auth = () => {
 
                   <div className="space-y-2">
                     <Label htmlFor="register-role">Eu sou</Label>
-                    <Select value={registerRole} onValueChange={setRegisterRole} required>
+                    <Select value={registerRole} onValueChange={(v) => setRegisterRole(v as AppRole)}>
                       <SelectTrigger className="w-full">
                         <div className="flex items-center gap-2">
                           <GraduationCap className="w-4 h-4 text-muted-foreground" />
