@@ -25,7 +25,6 @@ const Landing = () => {
 
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Recursos</a>
-            <a href="#how" className="text-muted-foreground hover:text-foreground transition-colors">Como Funciona</a>
           </div>
 
           <div className="flex items-center gap-3">
@@ -207,7 +206,7 @@ launch_programming()`}
           </div>
 
           <p className="text-sm text-muted-foreground">
-            © 2026 JovemCoder. Todos os direitos reservados.
+            © 2026 JovemCoder. Todos os direitos reservados. | Por: Ederson Wermeier
           </p>
         </div>
       </footer>
