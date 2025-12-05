@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,36 +18,126 @@ import {
   Play,
   LogOut,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+
+interface StudentXP {
+  total_xp: number;
+  level: number;
+}
+
+interface Streak {
+  current_streak: number;
+  longest_streak: number;
+}
+
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  image_url: string;
+}
+
+interface StudentBadge {
+  id: string;
+  earned_at: string;
+  badges: {
+    name: string;
+    icon: string;
+    rarity: string;
+  };
+}
+
+interface DailyMission {
+  id: string;
+  title: string;
+  target_count: number;
+  xp_reward: number;
+  student_missions: {
+    progress: number;
+    completed: boolean;
+  }[];
+}
 
 const StudentDashboard = () => {
-  // Mock data - will be replaced with real data from Supabase
-  const userData = {
-    name: "João Silva",
-    level: 12,
-    xp: 2450,
-    xpToNext: 3000,
-    streak: 7,
-    totalBadges: 15,
-    ranking: 42,
+  const { profile, signOut } = useAuth();
+  const [xpData, setXpData] = useState<StudentXP | null>(null);
+  const [streakData, setStreakData] = useState<Streak | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [badges, setBadges] = useState<StudentBadge[]>([]);
+  const [missions, setMissions] = useState<DailyMission[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch XP data
+        const { data: xp } = await supabase
+          .from('student_xp')
+          .select('total_xp, level')
+          .maybeSingle();
+        setXpData(xp);
+
+        // Fetch streak data
+        const { data: streak } = await supabase
+          .from('streaks')
+          .select('current_streak, longest_streak')
+          .maybeSingle();
+        setStreakData(streak);
+
+        // Fetch courses
+        const { data: coursesData } = await supabase
+          .from('courses')
+          .select('*')
+          .order('order_index');
+        setCourses(coursesData || []);
+
+        // Fetch badges
+        const { data: badgesData } = await supabase
+          .from('student_badges')
+          .select('id, earned_at, badges(name, icon, rarity)')
+          .order('earned_at', { ascending: false })
+          .limit(3);
+        setBadges(badgesData as StudentBadge[] || []);
+
+        // Fetch daily missions with progress
+        const { data: missionsData } = await supabase
+          .from('daily_missions')
+          .select(`
+            id,
+            title,
+            target_count,
+            xp_reward,
+            student_missions(progress, completed)
+          `)
+          .eq('active', true);
+        setMissions(missionsData as DailyMission[] || []);
+
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const xpToNextLevel = (xpData?.level || 1) * 500;
+  const currentXp = xpData?.total_xp || 0;
+  const xpProgress = (currentXp % 500) / 500 * 100;
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
-  const dailyMissions = [
-    { id: 1, title: "Complete 3 exercícios", progress: 2, total: 3, xp: 50 },
-    { id: 2, title: "Assista 1 aula", progress: 1, total: 1, xp: 30, completed: true },
-    { id: 3, title: "Acerte 5 questões seguidas", progress: 3, total: 5, xp: 100 },
-  ];
-
-  const recentBadges = [
-    { id: 1, name: "Primeira Semana", icon: "🎯", rarity: "common" },
-    { id: 2, name: "Streak de 7 dias", icon: "🔥", rarity: "rare" },
-    { id: 3, name: "Mestre Python", icon: "🐍", rarity: "epic" },
-  ];
-
-  const continueLearning = [
-    { id: 1, title: "Python Básico", progress: 75, lessons: 12, image: "🐍" },
-    { id: 2, title: "JavaScript Fundamentos", progress: 45, lessons: 15, image: "💛" },
-    { id: 3, title: "SQL para Iniciantes", progress: 20, lessons: 10, image: "🗃️" },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background dark flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background dark">
@@ -64,26 +155,24 @@ const StudentDashboard = () => {
             {/* XP Display */}
             <div className="hidden sm:flex items-center gap-2 bg-xp/10 px-3 py-1.5 rounded-full">
               <Zap className="w-4 h-4 text-xp" />
-              <span className="text-sm font-medium text-xp">{userData.xp} XP</span>
+              <span className="text-sm font-medium text-xp">{currentXp} XP</span>
             </div>
 
             {/* Streak Display */}
             <div className="hidden sm:flex items-center gap-2 bg-streak/10 px-3 py-1.5 rounded-full">
               <Flame className="w-4 h-4 text-streak" />
-              <span className="text-sm font-medium text-streak">{userData.streak} dias</span>
+              <span className="text-sm font-medium text-streak">{streakData?.current_streak || 0} dias</span>
             </div>
 
             {/* Level */}
             <div className="flex items-center gap-2 bg-level/10 px-3 py-1.5 rounded-full">
               <Star className="w-4 h-4 text-level" />
-              <span className="text-sm font-medium text-level">Nível {userData.level}</span>
+              <span className="text-sm font-medium text-level">Nível {xpData?.level || 1}</span>
             </div>
 
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <LogOut className="w-5 h-5" />
-              </Button>
-            </Link>
+            <Button variant="ghost" size="icon" onClick={handleSignOut}>
+              <LogOut className="w-5 h-5" />
+            </Button>
           </div>
         </div>
       </header>
@@ -92,7 +181,7 @@ const StudentDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-            Olá, {userData.name.split(" ")[0]}! 👋
+            Olá, {profile?.full_name?.split(" ")[0] || "Estudante"}! 👋
           </h1>
           <p className="text-muted-foreground">Continue sua jornada e mantenha seu streak!</p>
         </div>
@@ -107,7 +196,7 @@ const StudentDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">XP Total</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{userData.xp}</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{currentXp}</p>
                 </div>
               </div>
             </CardContent>
@@ -121,7 +210,7 @@ const StudentDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Streak</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{userData.streak} dias</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{streakData?.current_streak || 0} dias</p>
                 </div>
               </div>
             </CardContent>
@@ -135,7 +224,7 @@ const StudentDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Conquistas</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{userData.totalBadges}</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{badges.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -148,8 +237,8 @@ const StudentDashboard = () => {
                   <TrendingUp className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Ranking</p>
-                  <p className="font-display text-2xl font-bold text-foreground">#{userData.ranking}</p>
+                  <p className="text-sm text-muted-foreground">Melhor Streak</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{streakData?.longest_streak || 0}</p>
                 </div>
               </div>
             </CardContent>
@@ -162,21 +251,23 @@ const StudentDashboard = () => {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-gradient-accent flex items-center justify-center glow-accent">
-                  <span className="font-display text-xl font-bold text-white">{userData.level}</span>
+                  <span className="font-display text-xl font-bold text-white">{xpData?.level || 1}</span>
                 </div>
                 <div>
-                  <p className="font-display text-lg font-semibold text-foreground">Nível {userData.level}</p>
-                  <p className="text-sm text-muted-foreground">Desenvolvedor Intermediário</p>
+                  <p className="font-display text-lg font-semibold text-foreground">Nível {xpData?.level || 1}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(xpData?.level || 1) < 5 ? "Iniciante" : (xpData?.level || 1) < 10 ? "Intermediário" : "Avançado"}
+                  </p>
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Próximo nível</p>
                 <p className="font-display text-lg font-semibold text-foreground">
-                  {userData.xpToNext - userData.xp} XP restantes
+                  {500 - (currentXp % 500)} XP restantes
                 </p>
               </div>
             </div>
-            <Progress value={(userData.xp / userData.xpToNext) * 100} className="h-3" />
+            <Progress value={xpProgress} className="h-3" />
           </CardContent>
         </Card>
 
@@ -194,39 +285,45 @@ const StudentDashboard = () => {
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
-              {dailyMissions.map((mission) => (
-                <div
-                  key={mission.id}
-                  className={`p-4 rounded-xl border ${
-                    mission.completed ? "bg-primary/5 border-primary/20" : "bg-card border-border/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      {mission.completed ? (
-                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                          <span className="text-white text-sm">✓</span>
-                        </div>
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                          <span className="text-muted-foreground text-sm">
-                            {mission.progress}/{mission.total}
-                          </span>
-                        </div>
-                      )}
-                      <span className={`font-medium ${mission.completed ? "text-primary" : "text-foreground"}`}>
-                        {mission.title}
-                      </span>
+              {missions.length > 0 ? missions.map((mission) => {
+                const progress = mission.student_missions?.[0]?.progress || 0;
+                const completed = mission.student_missions?.[0]?.completed || false;
+                return (
+                  <div
+                    key={mission.id}
+                    className={`p-4 rounded-xl border ${
+                      completed ? "bg-primary/5 border-primary/20" : "bg-card border-border/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        {completed ? (
+                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                            <span className="text-white text-sm">✓</span>
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                            <span className="text-muted-foreground text-sm">
+                              {progress}/{mission.target_count}
+                            </span>
+                          </div>
+                        )}
+                        <span className={`font-medium ${completed ? "text-primary" : "text-foreground"}`}>
+                          {mission.title}
+                        </span>
+                      </div>
+                      <Badge variant="secondary" className="bg-xp/10 text-xp">
+                        +{mission.xp_reward} XP
+                      </Badge>
                     </div>
-                    <Badge variant="secondary" className="bg-xp/10 text-xp">
-                      +{mission.xp} XP
-                    </Badge>
+                    {!completed && (
+                      <Progress value={(progress / mission.target_count) * 100} className="h-2" />
+                    )}
                   </div>
-                  {!mission.completed && (
-                    <Progress value={(mission.progress / mission.total) * 100} className="h-2" />
-                  )}
-                </div>
-              ))}
+                );
+              }) : (
+                <p className="text-muted-foreground text-center py-4">Nenhuma missão disponível</p>
+              )}
             </CardContent>
           </Card>
 
@@ -239,31 +336,37 @@ const StudentDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {recentBadges.map((badge) => (
+              {badges.length > 0 ? badges.map((badge) => (
                 <div
                   key={badge.id}
                   className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50"
                 >
                   <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl">
-                    {badge.icon}
+                    {badge.badges?.icon || "🏆"}
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{badge.name}</p>
+                    <p className="font-medium text-foreground">{badge.badges?.name}</p>
                     <Badge
                       variant="secondary"
                       className={`text-xs ${
-                        badge.rarity === "epic"
+                        badge.badges?.rarity === "epic"
                           ? "bg-level/10 text-level"
-                          : badge.rarity === "rare"
+                          : badge.badges?.rarity === "rare"
                           ? "bg-info/10 text-info"
+                          : badge.badges?.rarity === "legendary"
+                          ? "bg-badge-gold/10 text-badge-gold"
                           : "bg-muted text-muted-foreground"
                       }`}
                     >
-                      {badge.rarity === "epic" ? "Épico" : badge.rarity === "rare" ? "Raro" : "Comum"}
+                      {badge.badges?.rarity === "epic" ? "Épico" : 
+                       badge.badges?.rarity === "rare" ? "Raro" : 
+                       badge.badges?.rarity === "legendary" ? "Lendário" : "Comum"}
                     </Badge>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-muted-foreground text-center py-4">Complete exercícios para ganhar badges!</p>
+              )}
               <Button variant="ghost" className="w-full mt-2">
                 Ver todas conquistas
                 <ChevronRight className="w-4 h-4 ml-1" />
@@ -282,30 +385,23 @@ const StudentDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {continueLearning.map((course) => (
+              {courses.map((course) => (
                 <div
                   key={course.id}
                   className="p-4 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-colors group cursor-pointer"
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl">
-                      {course.image}
+                      {course.image_url}
                     </div>
                     <div className="flex-1">
                       <p className="font-medium text-foreground">{course.title}</p>
-                      <p className="text-sm text-muted-foreground">{course.lessons} aulas</p>
+                      <p className="text-sm text-muted-foreground">{course.description?.slice(0, 30)}...</p>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Progresso</span>
-                      <span className="text-foreground font-medium">{course.progress}%</span>
-                    </div>
-                    <Progress value={course.progress} className="h-2" />
                   </div>
                   <Button className="w-full mt-4 bg-gradient-primary hover:opacity-90 group-hover:glow-primary transition-all">
                     <Play className="w-4 h-4 mr-2" />
-                    Continuar
+                    Começar
                   </Button>
                 </div>
               ))}

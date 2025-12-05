@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,15 +18,59 @@ import {
   LogOut,
   BarChart3,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+
+interface ClassData {
+  id: string;
+  name: string;
+  description: string;
+  enrollments: { count: number }[];
+}
 
 const TeacherDashboard = () => {
-  // Mock data
-  const stats = {
-    totalStudents: 156,
-    totalClasses: 8,
-    pendingCorrections: 23,
-    avgPerformance: 78,
+  const { profile, signOut } = useAuth();
+  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch teacher's classes with enrollment count
+        const { data: classesData } = await supabase
+          .from('classes')
+          .select('id, name, description, enrollments(count)')
+          .order('created_at', { ascending: false });
+        
+        setClasses(classesData as ClassData[] || []);
+        
+        // Calculate total students
+        const total = (classesData || []).reduce((acc, cls) => {
+          return acc + (cls.enrollments?.[0]?.count || 0);
+        }, 0);
+        setTotalStudents(total);
+
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleSignOut = async () => {
+    await signOut();
   };
+
+  const quickActions = [
+    { icon: FileText, label: "Nova Questão", color: "bg-gradient-primary" },
+    { icon: BookOpen, label: "Nova Aula", color: "bg-gradient-accent" },
+    { icon: Trophy, label: "Novo Desafio", color: "bg-gradient-xp" },
+    { icon: Users, label: "Nova Turma", color: "bg-gradient-streak" },
+  ];
 
   const recentActivities = [
     { id: 1, type: "submission", student: "Maria Santos", activity: "Exercício Python #12", time: "2 min atrás" },
@@ -34,18 +79,13 @@ const TeacherDashboard = () => {
     { id: 4, type: "badge", student: "Pedro Lima", activity: "Conquistou badge 'Mestre Python'", time: "2 horas atrás" },
   ];
 
-  const classes = [
-    { id: 1, name: "Turma A - Python", students: 32, avgProgress: 68 },
-    { id: 2, name: "Turma B - JavaScript", students: 28, avgProgress: 54 },
-    { id: 3, name: "Turma C - SQL", students: 24, avgProgress: 82 },
-  ];
-
-  const quickActions = [
-    { icon: FileText, label: "Nova Questão", color: "bg-gradient-primary" },
-    { icon: BookOpen, label: "Nova Aula", color: "bg-gradient-accent" },
-    { icon: Trophy, label: "Novo Desafio", color: "bg-gradient-xp" },
-    { icon: Users, label: "Nova Turma", color: "bg-gradient-streak" },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background dark flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background dark">
@@ -61,16 +101,9 @@ const TeacherDashboard = () => {
           </Link>
 
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 bg-destructive/10 px-3 py-1.5 rounded-full">
-              <AlertCircle className="w-4 h-4 text-destructive" />
-              <span className="text-sm font-medium text-destructive">{stats.pendingCorrections} pendentes</span>
-            </div>
-
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <LogOut className="w-5 h-5" />
-              </Button>
-            </Link>
+            <Button variant="ghost" size="icon" onClick={handleSignOut}>
+              <LogOut className="w-5 h-5" />
+            </Button>
           </div>
         </div>
       </header>
@@ -80,7 +113,7 @@ const TeacherDashboard = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-              Painel do Professor 📚
+              Olá, {profile?.full_name?.split(" ")[0] || "Professor"}! 📚
             </h1>
             <p className="text-muted-foreground">Gerencie suas turmas e acompanhe o progresso dos alunos.</p>
           </div>
@@ -115,7 +148,7 @@ const TeacherDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total de Alunos</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{stats.totalStudents}</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{totalStudents}</p>
                 </div>
               </div>
             </CardContent>
@@ -129,7 +162,7 @@ const TeacherDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Turmas Ativas</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{stats.totalClasses}</p>
+                  <p className="font-display text-2xl font-bold text-foreground">{classes.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -143,7 +176,7 @@ const TeacherDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Correções</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{stats.pendingCorrections}</p>
+                  <p className="font-display text-2xl font-bold text-foreground">0</p>
                 </div>
               </div>
             </CardContent>
@@ -157,7 +190,7 @@ const TeacherDashboard = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Média Geral</p>
-                  <p className="font-display text-2xl font-bold text-foreground">{stats.avgPerformance}%</p>
+                  <p className="font-display text-2xl font-bold text-foreground">--</p>
                 </div>
               </div>
             </CardContent>
@@ -219,7 +252,7 @@ const TeacherDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {classes.map((cls) => (
+              {classes.length > 0 ? classes.map((cls) => (
                 <div
                   key={cls.id}
                   className="p-4 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-colors cursor-pointer"
@@ -227,20 +260,14 @@ const TeacherDashboard = () => {
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-medium text-foreground">{cls.name}</p>
                     <Badge variant="secondary" className="bg-muted">
-                      {cls.students} alunos
+                      {cls.enrollments?.[0]?.count || 0} alunos
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-primary rounded-full"
-                        style={{ width: `${cls.avgProgress}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-foreground">{cls.avgProgress}%</span>
-                  </div>
+                  <p className="text-sm text-muted-foreground">{cls.description || "Sem descrição"}</p>
                 </div>
-              ))}
+              )) : (
+                <p className="text-muted-foreground text-center py-4">Nenhuma turma criada ainda</p>
+              )}
               <Button variant="ghost" className="w-full mt-2">
                 <Plus className="w-4 h-4 mr-2" />
                 Nova Turma
