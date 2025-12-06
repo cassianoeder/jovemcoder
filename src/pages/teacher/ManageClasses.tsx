@@ -9,12 +9,12 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   Code2, ArrowLeft, Plus, Pencil, Trash2, Users, Lock, Globe, 
-  CheckCircle, XCircle, Clock, UserPlus, UserMinus, Eye
+  CheckCircle, XCircle, Clock, Eye, BookOpen
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,7 +25,6 @@ interface Class {
   description: string | null;
   is_public: boolean;
   status: string;
-  course_id: string | null;
   teacher_id: string | null;
   created_at: string;
 }
@@ -33,6 +32,11 @@ interface Class {
 interface Course {
   id: string;
   title: string;
+}
+
+interface ClassCourse {
+  course_id: string;
+  courses?: { title: string };
 }
 
 interface EnrollmentRequest {
@@ -58,6 +62,7 @@ const ManageClasses = () => {
   const { user } = useAuth();
   const [classes, setClasses] = useState<Class[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [classCourses, setClassCourses] = useState<Record<string, ClassCourse[]>>({});
   const [requests, setRequests] = useState<EnrollmentRequest[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,19 +73,30 @@ const ManageClasses = () => {
     name: "",
     description: "",
     is_public: true,
-    course_id: "",
+    course_ids: [] as string[],
   });
 
   const fetchData = async () => {
     setLoading(true);
-    const [classesRes, coursesRes, requestsRes] = await Promise.all([
+    const [classesRes, coursesRes, requestsRes, classCoursesRes] = await Promise.all([
       supabase.from('classes').select('*').order('created_at', { ascending: false }),
       supabase.from('courses').select('id, title').order('title'),
       supabase.from('enrollment_requests').select('*').eq('status', 'pending'),
+      supabase.from('class_courses').select('class_id, course_id, courses(title)'),
     ]);
 
     if (classesRes.data) setClasses(classesRes.data as Class[]);
     if (coursesRes.data) setCourses(coursesRes.data);
+    
+    // Group class_courses by class_id
+    if (classCoursesRes.data) {
+      const grouped = (classCoursesRes.data as any[]).reduce((acc, cc) => {
+        if (!acc[cc.class_id]) acc[cc.class_id] = [];
+        acc[cc.class_id].push(cc);
+        return acc;
+      }, {} as Record<string, ClassCourse[]>);
+      setClassCourses(grouped);
+    }
     
     // Fetch profiles for requests
     if (requestsRes.data && requestsRes.data.length > 0) {
@@ -125,32 +141,55 @@ const ManageClasses = () => {
       name: formData.name,
       description: formData.description || null,
       is_public: formData.is_public,
-      course_id: formData.course_id || null,
       teacher_id: user?.id,
     };
 
-    if (selectedClass) {
-      const { error } = await supabase
-        .from('classes')
-        .update(payload)
-        .eq('id', selectedClass.id);
-      if (error) {
-        toast.error("Erro ao atualizar turma");
-        return;
-      }
-      toast.success("Turma atualizada!");
-    } else {
-      const { error } = await supabase.from('classes').insert(payload);
-      if (error) {
-        toast.error("Erro ao criar turma");
-        return;
-      }
-      toast.success("Turma criada!");
-    }
+    try {
+      if (selectedClass) {
+        // Update class
+        const { error } = await supabase
+          .from('classes')
+          .update(payload)
+          .eq('id', selectedClass.id);
+        if (error) throw error;
 
-    setIsDialogOpen(false);
-    resetForm();
-    fetchData();
+        // Update class_courses: delete all and re-insert
+        await supabase.from('class_courses').delete().eq('class_id', selectedClass.id);
+        
+        if (formData.course_ids.length > 0) {
+          const coursesToInsert = formData.course_ids.map(courseId => ({
+            class_id: selectedClass.id,
+            course_id: courseId,
+          }));
+          const { error: insertError } = await supabase.from('class_courses').insert(coursesToInsert);
+          if (insertError) throw insertError;
+        }
+
+        toast.success("Turma atualizada!");
+      } else {
+        // Create class
+        const { data: newClass, error } = await supabase.from('classes').insert(payload).select().single();
+        if (error) throw error;
+
+        // Insert class_courses
+        if (formData.course_ids.length > 0 && newClass) {
+          const coursesToInsert = formData.course_ids.map(courseId => ({
+            class_id: newClass.id,
+            course_id: courseId,
+          }));
+          const { error: insertError } = await supabase.from('class_courses').insert(coursesToInsert);
+          if (insertError) throw insertError;
+        }
+
+        toast.success("Turma criada!");
+      }
+
+      setIsDialogOpen(false);
+      resetForm();
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao salvar turma");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -166,11 +205,12 @@ const ManageClasses = () => {
 
   const handleEdit = (cls: Class) => {
     setSelectedClass(cls);
+    const courseIds = (classCourses[cls.id] || []).map(cc => cc.course_id);
     setFormData({
       name: cls.name,
       description: cls.description || "",
       is_public: cls.is_public,
-      course_id: cls.course_id || "",
+      course_ids: courseIds,
     });
     setIsDialogOpen(true);
   };
@@ -186,7 +226,6 @@ const ManageClasses = () => {
     if (!request) return;
 
     if (action === 'approved') {
-      // Create enrollment
       const { error: enrollError } = await supabase.from('enrollments').insert({
         student_id: request.student_id,
         class_id: request.class_id,
@@ -198,7 +237,6 @@ const ManageClasses = () => {
       }
     }
 
-    // Update request status
     const { error } = await supabase
       .from('enrollment_requests')
       .update({ status: action, reviewed_by: user?.id, reviewed_at: new Date().toISOString() })
@@ -226,7 +264,16 @@ const ManageClasses = () => {
 
   const resetForm = () => {
     setSelectedClass(null);
-    setFormData({ name: "", description: "", is_public: true, course_id: "" });
+    setFormData({ name: "", description: "", is_public: true, course_ids: [] });
+  };
+
+  const toggleCourse = (courseId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      course_ids: prev.course_ids.includes(courseId)
+        ? prev.course_ids.filter(id => id !== courseId)
+        : [...prev.course_ids, courseId]
+    }));
   };
 
   const pendingRequestsCount = requests.length;
@@ -260,7 +307,7 @@ const ManageClasses = () => {
                 <Plus className="w-4 h-4 mr-2" />Nova Turma
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{selectedClass ? "Editar Turma" : "Nova Turma"}</DialogTitle>
               </DialogHeader>
@@ -284,19 +331,38 @@ const ManageClasses = () => {
                     placeholder="Descrição da turma..."
                   />
                 </div>
-                <div>
-                  <Label htmlFor="course">Curso Associado</Label>
-                  <Select value={formData.course_id} onValueChange={(v) => setFormData({ ...formData, course_id: v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um curso (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {courses.map((course) => (
-                        <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                
+                {/* Multiple Courses Selection */}
+                <div className="space-y-3">
+                  <Label>Cursos Vinculados</Label>
+                  <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                    {courses.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum curso cadastrado</p>
+                    ) : (
+                      courses.map((course) => (
+                        <div key={course.id} className="flex items-center space-x-3">
+                          <Checkbox 
+                            id={course.id}
+                            checked={formData.course_ids.includes(course.id)}
+                            onCheckedChange={() => toggleCourse(course.id)}
+                          />
+                          <label 
+                            htmlFor={course.id}
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            {course.title}
+                          </label>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {formData.course_ids.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {formData.course_ids.length} curso(s) selecionado(s)
+                    </p>
+                  )}
                 </div>
+
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
                     {formData.is_public ? <Globe className="w-5 h-5 text-primary" /> : <Lock className="w-5 h-5 text-warning" />}
@@ -348,41 +414,55 @@ const ManageClasses = () => {
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classes.map((cls) => (
-                  <Card key={cls.id} className="glass border-border/50 hover:border-primary/30 transition-colors">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          {cls.is_public ? (
-                            <Globe className="w-4 h-4 text-primary" />
-                          ) : (
-                            <Lock className="w-4 h-4 text-warning" />
-                          )}
-                          <Badge variant="secondary" className={cls.is_public ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning"}>
-                            {cls.is_public ? "Pública" : "Privada"}
-                          </Badge>
+                {classes.map((cls) => {
+                  const classCoursesData = classCourses[cls.id] || [];
+                  return (
+                    <Card key={cls.id} className="glass border-border/50 hover:border-primary/30 transition-colors">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            {cls.is_public ? (
+                              <Globe className="w-4 h-4 text-primary" />
+                            ) : (
+                              <Lock className="w-4 h-4 text-warning" />
+                            )}
+                            <Badge variant="secondary" className={cls.is_public ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning"}>
+                              {cls.is_public ? "Pública" : "Privada"}
+                            </Badge>
+                          </div>
                         </div>
-                      </div>
-                      <CardTitle className="text-lg mt-2">{cls.name}</CardTitle>
-                      {cls.description && (
-                        <CardDescription className="line-clamp-2">{cls.description}</CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex gap-2 flex-wrap">
-                        <Button variant="outline" size="sm" onClick={() => handleViewStudents(cls)}>
-                          <Eye className="w-4 h-4 mr-1" />Alunos
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(cls)}>
-                          <Pencil className="w-4 h-4 mr-1" />Editar
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(cls.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <CardTitle className="text-lg mt-2">{cls.name}</CardTitle>
+                        {cls.description && (
+                          <CardDescription className="line-clamp-2">{cls.description}</CardDescription>
+                        )}
+                      </CardHeader>
+                      <CardContent>
+                        {/* Show linked courses */}
+                        {classCoursesData.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {classCoursesData.map((cc, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                <BookOpen className="w-3 h-3 mr-1" />
+                                {cc.courses?.title || "Curso"}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2 flex-wrap">
+                          <Button variant="outline" size="sm" onClick={() => handleViewStudents(cls)}>
+                            <Eye className="w-4 h-4 mr-1" />Alunos
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(cls)}>
+                            <Pencil className="w-4 h-4 mr-1" />Editar
+                          </Button>
+                          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(cls.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -437,47 +517,31 @@ const ManageClasses = () => {
 
       {/* Students Dialog */}
       <Dialog open={isStudentsDialogOpen} onOpenChange={setIsStudentsDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Alunos da Turma: {selectedClass?.name}
-            </DialogTitle>
+            <DialogTitle>Alunos - {selectedClass?.name}</DialogTitle>
           </DialogHeader>
           {enrollments.length === 0 ? (
-            <div className="text-center py-8">
-              <UserPlus className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Nenhum aluno matriculado nesta turma</p>
+            <div className="py-8 text-center">
+              <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Nenhum aluno matriculado</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Matriculado em</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {enrollments.map((enrollment) => (
-                  <TableRow key={enrollment.id}>
-                    <TableCell className="font-medium">{enrollment.profiles?.full_name || "Aluno"}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={enrollment.status === 'approved' ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning"}>
-                        {enrollment.status === 'approved' ? 'Ativo' : 'Pendente'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleRemoveStudent(enrollment.id)}>
-                        <UserMinus className="w-4 h-4 mr-1" />Remover
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {enrollments.map((enrollment) => (
+                <div key={enrollment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div>
+                    <p className="font-medium">{enrollment.profiles?.full_name || "Aluno"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Desde {new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleRemoveStudent(enrollment.id)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </DialogContent>
       </Dialog>
