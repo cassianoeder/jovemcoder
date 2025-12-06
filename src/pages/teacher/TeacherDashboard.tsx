@@ -3,21 +3,20 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, BookOpen, FileText, Code2, ChevronRight, LogOut, HelpCircle, UserCog, GraduationCap, Layers, School, Settings, Award, Home } from "lucide-react";
+import { Users, BookOpen, FileText, Code2, ChevronRight, LogOut, UserCog, GraduationCap, Layers, School, Settings, Award, Home } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
 const TeacherDashboard = () => {
   const { profile, role, signOut } = useAuth();
-  const [stats, setStats] = useState({ lessons: 0, exercises: 0, questions: 0, classes: 0, courses: 0, modules: 0, pendingRequests: 0, students: 0 });
+  const [stats, setStats] = useState({ lessons: 0, exercises: 0, classes: 0, courses: 0, modules: 0, pendingRequests: 0, students: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
-      const [lessons, exercises, questions, classes, courses, modules, requests, students] = await Promise.all([
+      const [lessons, exercises, classes, courses, modules, requests, students] = await Promise.all([
         supabase.from('lessons').select('*', { count: 'exact', head: true }),
         supabase.from('exercises').select('*', { count: 'exact', head: true }),
-        supabase.from('questions').select('*', { count: 'exact', head: true }),
         supabase.from('classes').select('*', { count: 'exact', head: true }),
         supabase.from('courses').select('*', { count: 'exact', head: true }),
         supabase.from('modules').select('*', { count: 'exact', head: true }),
@@ -27,7 +26,6 @@ const TeacherDashboard = () => {
       setStats({
         lessons: lessons.count || 0,
         exercises: exercises.count || 0,
-        questions: questions.count || 0,
         classes: classes.count || 0,
         courses: courses.count || 0,
         modules: modules.count || 0,
@@ -47,7 +45,6 @@ const TeacherDashboard = () => {
     { icon: Layers, label: "Módulos", count: stats.modules, href: "/teacher/modules", color: "bg-gradient-accent" },
     { icon: BookOpen, label: "Aulas", count: stats.lessons, href: "/teacher/lessons", color: "bg-gradient-streak" },
     { icon: FileText, label: "Exercícios", count: stats.exercises, href: "/teacher/exercises", color: "bg-gradient-level" },
-    { icon: HelpCircle, label: "Questões", count: stats.questions, href: "/teacher/questions", color: "bg-badge-gold" },
   ];
 
   if (loading) {

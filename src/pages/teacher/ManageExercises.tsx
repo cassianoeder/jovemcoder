@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import {
   Code2,
   Plus,
@@ -18,12 +18,13 @@ import {
   Zap,
   LogOut,
   ListChecks,
-  Brain,
   BookOpen,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import type { Json } from "@/integrations/supabase/types";
 
 interface Course {
   id: string;
@@ -43,6 +44,13 @@ interface Lesson {
   modules?: { title: string; courses?: { title: string } | null } | null;
 }
 
+interface QuestionItem {
+  question_text: string;
+  options: string[];
+  correct_answer: string;
+  explanation: string;
+}
+
 interface Exercise {
   id: string;
   title: string;
@@ -53,6 +61,7 @@ interface Exercise {
   xp_reward: number;
   starter_code: string | null;
   solution_code: string | null;
+  test_cases: Json | null;
   lesson_id: string | null;
   lessons?: { title: string; modules?: { title: string; courses?: { title: string } | null } | null } | null;
 }
@@ -84,6 +93,9 @@ const ManageExercises = () => {
   const [lessonId, setLessonId] = useState("");
   const [starterCode, setStarterCode] = useState("");
   const [solutionCode, setSolutionCode] = useState("");
+
+  // Multiple choice questions
+  const [questions, setQuestions] = useState<QuestionItem[]>([]);
 
   // Form filters
   const [formCourseId, setFormCourseId] = useState("");
@@ -178,12 +190,13 @@ const ManageExercises = () => {
     setLessonId("");
     setStarterCode("");
     setSolutionCode("");
+    setQuestions([]);
     setFormCourseId("");
     setFormModuleId("");
     setEditingExercise(null);
   };
 
-  const handleEdit = (exercise: Exercise) => {
+  const handleEdit = async (exercise: Exercise) => {
     setEditingExercise(exercise);
     setTitle(exercise.title);
     setDescription(exercise.description || "");
@@ -194,6 +207,16 @@ const ManageExercises = () => {
     setLessonId(exercise.lesson_id || "");
     setStarterCode(exercise.starter_code || "");
     setSolutionCode(exercise.solution_code || "");
+
+    // Load questions from test_cases for multiple choice
+    if (exercise.type === 'multiple_choice' && exercise.test_cases) {
+      const testCases = exercise.test_cases as unknown as QuestionItem[];
+      if (Array.isArray(testCases)) {
+        setQuestions(testCases);
+      }
+    } else {
+      setQuestions([]);
+    }
 
     // Find the lesson to get course and module
     const lesson = lessons.find(l => l.id === exercise.lesson_id);
@@ -210,6 +233,28 @@ const ManageExercises = () => {
     setDialogOpen(true);
   };
 
+  const addQuestion = () => {
+    setQuestions([...questions, { question_text: "", options: ["", "", "", ""], correct_answer: "", explanation: "" }]);
+  };
+
+  const removeQuestion = (index: number) => {
+    setQuestions(questions.filter((_, i) => i !== index));
+  };
+
+  const updateQuestion = (index: number, field: keyof QuestionItem, value: string | string[]) => {
+    const updated = [...questions];
+    updated[index] = { ...updated[index], [field]: value };
+    setQuestions(updated);
+  };
+
+  const updateOption = (qIndex: number, oIndex: number, value: string) => {
+    const updated = [...questions];
+    const newOptions = [...updated[qIndex].options];
+    newOptions[oIndex] = value;
+    updated[qIndex] = { ...updated[qIndex], options: newOptions };
+    setQuestions(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -217,6 +262,48 @@ const ManageExercises = () => {
       toast({ title: "Erro", description: "Selecione uma aula", variant: "destructive" });
       return;
     }
+
+    // Validate multiple choice questions
+    if (type === 'multiple_choice') {
+      if (questions.length === 0) {
+        toast({ title: "Erro", description: "Adicione pelo menos uma questão", variant: "destructive" });
+        return;
+      }
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        if (!q.question_text.trim()) {
+          toast({ title: "Erro", description: `Questão ${i + 1}: Preencha o texto da pergunta`, variant: "destructive" });
+          return;
+        }
+        const validOptions = q.options.filter(o => o.trim() !== "");
+        if (validOptions.length < 2) {
+          toast({ title: "Erro", description: `Questão ${i + 1}: Adicione pelo menos 2 opções`, variant: "destructive" });
+          return;
+        }
+        if (!q.correct_answer || !validOptions.includes(q.correct_answer)) {
+          toast({ title: "Erro", description: `Questão ${i + 1}: Selecione a resposta correta`, variant: "destructive" });
+          return;
+        }
+      }
+    }
+
+    // Validate code exercise
+    if (type === 'code') {
+      if (!language) {
+        toast({ title: "Erro", description: "Selecione a linguagem de programação", variant: "destructive" });
+        return;
+      }
+      if (!solutionCode.trim()) {
+        toast({ title: "Erro", description: "Adicione a solução do código", variant: "destructive" });
+        return;
+      }
+    }
+
+    // Clean up questions for storage
+    const cleanQuestions = questions.map(q => ({
+      ...q,
+      options: q.options.filter(o => o.trim() !== "")
+    }));
 
     const exerciseData = {
       title,
@@ -228,6 +315,7 @@ const ManageExercises = () => {
       lesson_id: lessonId,
       starter_code: type === 'code' ? starterCode : null,
       solution_code: type === 'code' ? solutionCode : null,
+      test_cases: type === 'multiple_choice' ? cleanQuestions : null,
     };
 
     try {
@@ -272,7 +360,6 @@ const ManageExercises = () => {
   const getTypeIcon = (exerciseType: string) => {
     switch (exerciseType) {
       case 'code': return <FileCode className="w-6 h-6 text-white" />;
-      case 'logic': return <Brain className="w-6 h-6 text-white" />;
       default: return <ListChecks className="w-6 h-6 text-white" />;
     }
   };
@@ -280,9 +367,16 @@ const ManageExercises = () => {
   const getTypeLabel = (exerciseType: string) => {
     switch (exerciseType) {
       case 'code': return 'Código';
-      case 'logic': return 'Lógica';
       default: return 'Múltipla Escolha';
     }
+  };
+
+  const getQuestionsCount = (exercise: Exercise) => {
+    if (exercise.type === 'multiple_choice' && exercise.test_cases) {
+      const cases = exercise.test_cases as unknown as QuestionItem[];
+      if (Array.isArray(cases)) return cases.length;
+    }
+    return 0;
   };
 
   // Group exercises by lesson
@@ -343,9 +437,14 @@ const ManageExercises = () => {
                 Novo Exercício
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingExercise ? "Editar Exercício" : "Novo Exercício"}</DialogTitle>
+                <DialogDescription>
+                  {type === 'multiple_choice' 
+                    ? "Configure as questões de múltipla escolha para este exercício"
+                    : "Configure o exercício de código para os alunos resolverem"}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Hierarchy Selection: Course > Module > Lesson */}
@@ -406,14 +505,13 @@ const ManageExercises = () => {
                   </div>
                   <div className="space-y-2">
                     <Label>Tipo</Label>
-                    <Select value={type} onValueChange={setType}>
+                    <Select value={type} onValueChange={(v) => { setType(v); if (v !== 'multiple_choice') setQuestions([]); }}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="multiple_choice">Múltipla Escolha</SelectItem>
                         <SelectItem value="code">Código</SelectItem>
-                        <SelectItem value="logic">Lógica</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -424,15 +522,82 @@ const ManageExercises = () => {
                   <Textarea 
                     value={description} 
                     onChange={(e) => setDescription(e.target.value)} 
-                    rows={3}
+                    rows={2}
                     placeholder="Descreva o exercício..."
                   />
                 </div>
 
+                {/* Multiple Choice Questions */}
+                {type === 'multiple_choice' && (
+                  <div className="space-y-4 p-4 rounded-lg border border-border/50">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base">Questões ({questions.length})</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
+                        <Plus className="w-4 h-4 mr-1" />
+                        Adicionar Questão
+                      </Button>
+                    </div>
+
+                    {questions.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Clique em "Adicionar Questão" para começar
+                      </p>
+                    )}
+
+                    {questions.map((q, qIndex) => (
+                      <div key={qIndex} className="p-4 rounded-lg bg-muted/30 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="font-medium">Questão {qIndex + 1}</Label>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeQuestion(qIndex)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+
+                        <Textarea
+                          value={q.question_text}
+                          onChange={(e) => updateQuestion(qIndex, 'question_text', e.target.value)}
+                          placeholder="Digite a pergunta..."
+                          rows={2}
+                        />
+
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Opções (clique para marcar como correta)</Label>
+                          {q.options.map((opt, oIndex) => (
+                            <div key={oIndex} className="flex gap-2">
+                              <Input
+                                value={opt}
+                                onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
+                                placeholder={`Opção ${oIndex + 1}`}
+                              />
+                              <Button
+                                type="button"
+                                variant={q.correct_answer === opt && opt ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => opt && updateQuestion(qIndex, 'correct_answer', opt)}
+                                disabled={!opt}
+                                className={q.correct_answer === opt && opt ? "bg-primary" : ""}
+                              >
+                                {q.correct_answer === opt && opt ? "✓" : "Correta"}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <Input
+                          value={q.explanation}
+                          onChange={(e) => updateQuestion(qIndex, 'explanation', e.target.value)}
+                          placeholder="Explicação (opcional)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Code Exercise Fields */}
                 {type === 'code' && (
                   <>
                     <div className="space-y-2">
-                      <Label>Linguagem</Label>
+                      <Label>Linguagem *</Label>
                       <Select value={language} onValueChange={setLanguage}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione a linguagem" />
@@ -446,7 +611,7 @@ const ManageExercises = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Código Inicial (Starter)</Label>
+                      <Label>Código Inicial (opcional)</Label>
                       <Textarea 
                         value={starterCode} 
                         onChange={(e) => setStarterCode(e.target.value)} 
@@ -457,7 +622,7 @@ const ManageExercises = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Solução</Label>
+                      <Label>Solução *</Label>
                       <Textarea 
                         value={solutionCode} 
                         onChange={(e) => setSolutionCode(e.target.value)} 
@@ -525,7 +690,9 @@ const ManageExercises = () => {
                             <div>
                               <h3 className="font-medium text-foreground">{exercise.title}</h3>
                               <p className="text-sm text-muted-foreground">
-                                {exercise.lessons?.title || "Sem aula vinculada"}
+                                {exercise.type === 'multiple_choice' 
+                                  ? `${getQuestionsCount(exercise)} questões` 
+                                  : exercise.language || "Código"}
                               </p>
                             </div>
                           </div>
