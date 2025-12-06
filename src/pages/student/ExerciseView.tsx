@@ -133,21 +133,26 @@ const ExerciseView = () => {
 
     const finalScore = Math.round((score / questions.length) * 100);
 
-    // Save progress
-    const { error } = await supabase
+    // Check if progress already exists
+    const { data: existingProgress } = await supabase
       .from('student_progress')
-      .upsert({
-        user_id: user.id,
-        exercise_id: exercise.id,
-        completed: true,
-        completed_at: new Date().toISOString(),
-        score: finalScore
-      }, {
-        onConflict: 'user_id,exercise_id'
-      });
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('exercise_id', exercise.id)
+      .maybeSingle();
 
-    if (error) {
-      // Try insert
+    if (existingProgress) {
+      // Update existing
+      await supabase
+        .from('student_progress')
+        .update({
+          completed: true,
+          completed_at: new Date().toISOString(),
+          score: finalScore
+        })
+        .eq('id', existingProgress.id);
+    } else {
+      // Insert new
       await supabase
         .from('student_progress')
         .insert({
