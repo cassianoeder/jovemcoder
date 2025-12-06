@@ -5,13 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowLeft, CheckCircle, XCircle, Zap, 
-  ChevronRight, AlertCircle, Trophy
+  ChevronRight, AlertCircle, Trophy, Play, Code2
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+interface QuestionItem {
+  question_text: string;
+  options: string[];
+  correct_answer: string;
+  explanation: string;
+}
 
 interface Exercise {
   id: string;
@@ -21,15 +29,10 @@ interface Exercise {
   xp_reward: number;
   difficulty: number;
   lesson_id: string | null;
-}
-
-interface Question {
-  id: string;
-  question_text: string;
-  options: string[];
-  correct_answer: string;
-  explanation: string | null;
-  order_index: number;
+  language: string | null;
+  starter_code: string | null;
+  solution_code: string | null;
+  test_cases: QuestionItem[] | null;
 }
 
 const ExerciseView = () => {
@@ -40,21 +43,24 @@ const ExerciseView = () => {
   const navigate = useNavigate();
   
   const [exercise, setExercise] = useState<Exercise | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState<string>("");
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
-  const [score, setScore] = useState(0);
-  const [isCompleted, setIsCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Multiple choice state
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<string>("");
+  const [answers, setAnswers] = useState<{[key: number]: string}>({});
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [score, setScore] = useState(0);
+
+  // Code exercise state
+  const [userCode, setUserCode] = useState("");
+  const [codeResult, setCodeResult] = useState<{success: boolean; message: string} | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!exerciseId || !user) return;
 
-      // Fetch exercise
       const { data: exerciseData, error: exerciseError } = await supabase
         .from('exercises')
         .select('*')
@@ -66,20 +72,18 @@ const ExerciseView = () => {
         navigate(-1);
         return;
       }
-      setExercise(exerciseData);
-
-      // Fetch questions for this exercise
-      const { data: questionsData } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('exercise_id', exerciseId)
-        .order('order_index');
-
-      const parsedQuestions = (questionsData || []).map(q => ({
-        ...q,
-        options: Array.isArray(q.options) ? q.options : JSON.parse(q.options as string || '[]')
-      }));
-      setQuestions(parsedQuestions);
+      
+      // Parse test_cases if it's a string
+      const parsed = {
+        ...exerciseData,
+        test_cases: exerciseData.test_cases 
+          ? (typeof exerciseData.test_cases === 'string' 
+              ? JSON.parse(exerciseData.test_cases) 
+              : exerciseData.test_cases)
+          : null
+      };
+      setExercise(parsed as Exercise);
+      setUserCode(exerciseData.starter_code || "");
 
       // Check if already completed
       const { data: progressData } = await supabase
@@ -87,7 +91,7 @@ const ExerciseView = () => {
         .select('completed, score')
         .eq('user_id', user.id)
         .eq('exercise_id', exerciseId)
-        .single();
+        .maybeSingle();
 
       if (progressData?.completed) {
         setIsCompleted(true);
@@ -100,40 +104,86 @@ const ExerciseView = () => {
     fetchData();
   }, [exerciseId, user, navigate]);
 
-  const handleAnswer = () => {
-    if (!selectedAnswer || isAnswered) return;
-
-    const currentQuestion = questions[currentQuestionIndex];
-    const correct = selectedAnswer === currentQuestion.correct_answer;
-    
-    setIsAnswered(true);
-    setIsCorrect(correct);
-    
-    if (correct) {
-      setScore(prev => prev + 1);
-    }
+  const handleSelectAnswer = (answer: string) => {
+    setSelectedAnswer(answer);
+    setAnswers({ ...answers, [currentQuestionIndex]: answer });
   };
 
-  const handleNext = async () => {
+  const handleNextQuestion = () => {
+    if (!exercise?.test_cases) return;
+    const questions = exercise.test_cases as QuestionItem[];
+    
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
-      setSelectedAnswer("");
-      setIsAnswered(false);
-      setIsCorrect(false);
+      setSelectedAnswer(answers[currentQuestionIndex + 1] || "");
     } else {
-      // Exercise completed
-      await completeExercise();
+      // Complete the exercise
+      completeMultipleChoice();
     }
   };
 
-  const completeExercise = async () => {
-    if (!user || !exercise) return;
+  const handlePrevQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
+      setSelectedAnswer(answers[currentQuestionIndex - 1] || "");
+    }
+  };
 
+  const completeMultipleChoice = async () => {
+    if (!user || !exercise?.test_cases) return;
     setSubmitting(true);
 
-    const finalScore = Math.round((score / questions.length) * 100);
+    const questions = exercise.test_cases as QuestionItem[];
+    let correctCount = 0;
+    
+    questions.forEach((q, index) => {
+      if (answers[index] === q.correct_answer) {
+        correctCount++;
+      }
+    });
 
-    // Check if progress already exists
+    const finalScore = Math.round((correctCount / questions.length) * 100);
+    await saveProgress(finalScore);
+    
+    setScore(finalScore);
+    setIsCompleted(true);
+    setSubmitting(false);
+    toast.success(`Exercício concluído! Nota: ${finalScore}%`);
+  };
+
+  const handleRunCode = () => {
+    if (!exercise?.solution_code) return;
+
+    // Simple code comparison (in production, use a proper code execution service)
+    const normalizedUser = userCode.replace(/\s+/g, '').toLowerCase();
+    const normalizedSolution = exercise.solution_code.replace(/\s+/g, '').toLowerCase();
+
+    if (normalizedUser === normalizedSolution || normalizedUser.includes(normalizedSolution.slice(0, 50))) {
+      setCodeResult({ success: true, message: "Código correto! Você pode prosseguir." });
+    } else {
+      setCodeResult({ success: false, message: "O código não está correto. Verifique sua solução." });
+    }
+  };
+
+  const completeCodeExercise = async () => {
+    if (!user || !exercise) return;
+    
+    if (!codeResult?.success) {
+      toast.error("Resolva o código corretamente antes de prosseguir");
+      return;
+    }
+
+    setSubmitting(true);
+    await saveProgress(100);
+    setIsCompleted(true);
+    setSubmitting(false);
+    toast.success(`Exercício concluído! +${exercise.xp_reward} XP`);
+  };
+
+  const saveProgress = async (finalScore: number) => {
+    if (!user || !exercise) return;
+
+    // Check if progress exists
     const { data: existingProgress } = await supabase
       .from('student_progress')
       .select('id')
@@ -142,7 +192,6 @@ const ExerciseView = () => {
       .maybeSingle();
 
     if (existingProgress) {
-      // Update existing
       await supabase
         .from('student_progress')
         .update({
@@ -152,7 +201,6 @@ const ExerciseView = () => {
         })
         .eq('id', existingProgress.id);
     } else {
-      // Insert new
       await supabase
         .from('student_progress')
         .insert({
@@ -169,7 +217,7 @@ const ExerciseView = () => {
       .from('student_xp')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (xpData) {
       await supabase
@@ -188,10 +236,6 @@ const ExerciseView = () => {
           level: 1
         });
     }
-
-    setIsCompleted(true);
-    setSubmitting(false);
-    toast.success(`Exercício concluído! +${exercise.xp_reward} XP`);
   };
 
   const handleBack = () => {
@@ -210,13 +254,13 @@ const ExerciseView = () => {
     );
   }
 
-  if (questions.length === 0) {
+  if (!exercise) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="glass border-border/50 max-w-md">
           <CardContent className="py-12 text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Nenhuma questão cadastrada para este exercício</p>
+            <p className="text-muted-foreground">Exercício não encontrado</p>
             <Button className="mt-4" onClick={handleBack}>Voltar</Button>
           </CardContent>
         </Card>
@@ -224,58 +268,33 @@ const ExerciseView = () => {
     );
   }
 
-  // Show results if completed
+  // Completed state
   if (isCompleted) {
-    const finalScore = Math.round((score / questions.length) * 100);
-    const passed = finalScore >= 70;
+    const passed = score >= 70;
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="glass border-border/50 max-w-md w-full">
           <CardContent className="py-12 text-center">
             <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-6 ${
-              passed ? 'bg-primary' : 'bg-destructive'
+              passed ? 'bg-primary' : 'bg-accent'
             }`}>
-              {passed ? (
-                <Trophy className="w-10 h-10 text-white" />
-              ) : (
-                <XCircle className="w-10 h-10 text-white" />
-              )}
+              <Trophy className="w-10 h-10 text-white" />
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">
-              {passed ? 'Parabéns!' : 'Tente novamente'}
+              Exercício Concluído!
             </h2>
             <p className="text-muted-foreground mb-4">
-              Você acertou {score} de {questions.length} questões
+              {exercise.type === 'multiple_choice' ? `Sua nota: ${score}%` : 'Código executado com sucesso!'}
             </p>
-            <div className="text-4xl font-bold mb-6" style={{ color: passed ? 'hsl(var(--primary))' : 'hsl(var(--destructive))' }}>
-              {finalScore}%
-            </div>
-            {passed && (
-              <Badge className="bg-xp/10 text-xp text-lg px-4 py-2 mb-6">
-                <Zap className="w-5 h-5 mr-2" />
-                +{exercise?.xp_reward} XP
-              </Badge>
-            )}
+            <Badge className="bg-xp/10 text-xp text-lg px-4 py-2 mb-6">
+              <Zap className="w-5 h-5 mr-2" />
+              +{exercise.xp_reward} XP
+            </Badge>
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={handleBack}>
                 Voltar à Aula
               </Button>
-              {!passed && (
-                <Button 
-                  className="bg-gradient-primary"
-                  onClick={() => {
-                    setCurrentQuestionIndex(0);
-                    setSelectedAnswer("");
-                    setIsAnswered(false);
-                    setIsCorrect(false);
-                    setScore(0);
-                    setIsCompleted(false);
-                  }}
-                >
-                  Tentar Novamente
-                </Button>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -283,116 +302,104 @@ const ExerciseView = () => {
     );
   }
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  // Multiple Choice Exercise
+  if (exercise.type === 'multiple_choice') {
+    const questions = (exercise.test_cases || []) as QuestionItem[];
+    
+    if (questions.length === 0) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <Card className="glass border-border/50 max-w-md">
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Nenhuma questão cadastrada para este exercício</p>
+              <Button className="mt-4" onClick={handleBack}>Voltar</Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 glass border-b border-border/50">
-        <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={handleBack}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-display text-lg font-bold text-foreground line-clamp-1">{exercise?.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              Questão {currentQuestionIndex + 1} de {questions.length}
-            </p>
+    const currentQuestion = questions[currentQuestionIndex];
+    const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-50 glass border-b border-border/50">
+          <div className="container mx-auto px-4 py-3 flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={handleBack}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="font-display text-lg font-bold text-foreground line-clamp-1">{exercise.title}</h1>
+              <p className="text-sm text-muted-foreground">
+                Questão {currentQuestionIndex + 1} de {questions.length}
+              </p>
+            </div>
+            <Badge className="bg-xp/10 text-xp">
+              <Zap className="w-3 h-3 mr-1" />
+              {exercise.xp_reward} XP
+            </Badge>
           </div>
-          <Badge className="bg-xp/10 text-xp">
-            <Zap className="w-3 h-3 mr-1" />
-            {exercise?.xp_reward} XP
-          </Badge>
-        </div>
-        <div className="h-1 bg-muted">
-          <div 
-            className="h-full bg-gradient-primary transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </header>
+          <div className="h-1 bg-muted">
+            <div 
+              className="h-full bg-gradient-primary transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl">
-        <Card className="glass border-border/50">
-          <CardHeader>
-            <CardTitle className="text-xl leading-relaxed">
-              {currentQuestion.question_text}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={selectedAnswer}
-              onValueChange={setSelectedAnswer}
-              disabled={isAnswered}
-              className="space-y-3"
-            >
-              {currentQuestion.options.map((option, index) => {
-                const isSelected = selectedAnswer === option;
-                const isCorrectAnswer = option === currentQuestion.correct_answer;
-                
-                let optionClass = "border-border/50 hover:bg-muted/50";
-                if (isAnswered) {
-                  if (isCorrectAnswer) {
-                    optionClass = "border-primary bg-primary/10";
-                  } else if (isSelected && !isCorrectAnswer) {
-                    optionClass = "border-destructive bg-destructive/10";
-                  }
-                } else if (isSelected) {
-                  optionClass = "border-primary bg-primary/5";
-                }
-
-                return (
-                  <div
-                    key={index}
-                    className={`flex items-center space-x-3 p-4 rounded-lg border transition-colors ${optionClass}`}
-                  >
-                    <RadioGroupItem value={option} id={`option-${index}`} />
-                    <Label 
-                      htmlFor={`option-${index}`} 
-                      className="flex-1 cursor-pointer text-base"
+        <main className="container mx-auto px-4 py-6 max-w-2xl">
+          <Card className="glass border-border/50">
+            <CardHeader>
+              <CardTitle className="text-xl leading-relaxed">
+                {currentQuestion.question_text}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup
+                value={selectedAnswer}
+                onValueChange={handleSelectAnswer}
+                className="space-y-3"
+              >
+                {currentQuestion.options.map((option, index) => {
+                  const isSelected = selectedAnswer === option;
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-center space-x-3 p-4 rounded-lg border transition-colors ${
+                        isSelected ? 'border-primary bg-primary/5' : 'border-border/50 hover:bg-muted/50'
+                      }`}
                     >
-                      {option}
-                    </Label>
-                    {isAnswered && isCorrectAnswer && (
-                      <CheckCircle className="w-5 h-5 text-primary" />
-                    )}
-                    {isAnswered && isSelected && !isCorrectAnswer && (
-                      <XCircle className="w-5 h-5 text-destructive" />
-                    )}
-                  </div>
-                );
-              })}
-            </RadioGroup>
+                      <RadioGroupItem value={option} id={`option-${index}`} />
+                      <Label 
+                        htmlFor={`option-${index}`} 
+                        className="flex-1 cursor-pointer text-base"
+                      >
+                        {option}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
 
-            {isAnswered && currentQuestion.explanation && (
-              <div className={`mt-6 p-4 rounded-lg ${isCorrect ? 'bg-primary/10' : 'bg-destructive/10'}`}>
-                <p className="text-sm font-medium mb-1">
-                  {isCorrect ? '✓ Correto!' : '✗ Incorreto'}
-                </p>
-                <p className="text-sm text-muted-foreground">{currentQuestion.explanation}</p>
-              </div>
-            )}
-
-            <div className="mt-6 flex gap-3">
-              {!isAnswered ? (
+              <div className="mt-6 flex gap-3">
+                {currentQuestionIndex > 0 && (
+                  <Button variant="outline" onClick={handlePrevQuestion}>
+                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    Anterior
+                  </Button>
+                )}
                 <Button 
-                  onClick={handleAnswer}
-                  disabled={!selectedAnswer}
-                  className="flex-1 bg-gradient-primary"
-                >
-                  Confirmar Resposta
-                </Button>
-              ) : (
-                <Button 
-                  onClick={handleNext}
-                  disabled={submitting}
+                  onClick={handleNextQuestion}
+                  disabled={!selectedAnswer || submitting}
                   className="flex-1 bg-gradient-primary"
                 >
                   {submitting ? (
                     <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
                   ) : currentQuestionIndex < questions.length - 1 ? (
                     <>
-                      Próxima Questão
+                      Próxima
                       <ChevronRight className="w-4 h-4 ml-1" />
                     </>
                   ) : (
@@ -402,7 +409,98 @@ const ExerciseView = () => {
                     </>
                   )}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Code Exercise
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 glass border-b border-border/50">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={handleBack}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="font-display text-lg font-bold text-foreground line-clamp-1">{exercise.title}</h1>
+            <p className="text-sm text-muted-foreground">
+              Exercício de Código • {exercise.language?.toUpperCase()}
+            </p>
+          </div>
+          <Badge className="bg-xp/10 text-xp">
+            <Zap className="w-3 h-3 mr-1" />
+            {exercise.xp_reward} XP
+          </Badge>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6 max-w-4xl">
+        <Card className="glass border-border/50 mb-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Code2 className="w-5 h-5 text-primary" />
+              {exercise.title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {exercise.description && (
+              <p className="text-muted-foreground mb-4">{exercise.description}</p>
+            )}
+            
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Seu Código:</Label>
+                <Textarea
+                  value={userCode}
+                  onChange={(e) => setUserCode(e.target.value)}
+                  className="font-mono text-sm min-h-[200px] bg-muted/30"
+                  placeholder="Escreva seu código aqui..."
+                />
+              </div>
+
+              {codeResult && (
+                <div className={`p-4 rounded-lg ${
+                  codeResult.success 
+                    ? 'bg-primary/10 border border-primary/30' 
+                    : 'bg-destructive/10 border border-destructive/30'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {codeResult.success ? (
+                      <CheckCircle className="w-5 h-5 text-primary" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-destructive" />
+                    )}
+                    <span className={codeResult.success ? 'text-primary' : 'text-destructive'}>
+                      {codeResult.message}
+                    </span>
+                  </div>
+                </div>
               )}
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleRunCode}>
+                  <Play className="w-4 h-4 mr-2" />
+                  Executar
+                </Button>
+                <Button 
+                  onClick={completeCodeExercise}
+                  disabled={!codeResult?.success || submitting}
+                  className="flex-1 bg-gradient-primary"
+                >
+                  {submitting ? (
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    <>
+                      Concluir Exercício
+                      <CheckCircle className="w-4 h-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
