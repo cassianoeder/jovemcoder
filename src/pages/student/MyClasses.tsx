@@ -8,6 +8,11 @@ import { Code2, ArrowLeft, BookOpen, Layers, Play, CheckCircle, Award } from "lu
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
+interface ClassCourse {
+  course_id: string;
+  courses: { id: string; title: string };
+}
+
 interface EnrolledClass {
   id: string;
   class_id: string;
@@ -16,7 +21,6 @@ interface EnrolledClass {
     id: string;
     name: string;
     description: string | null;
-    courses: { id: string; title: string } | null;
   };
 }
 
@@ -31,6 +35,7 @@ interface ClassProgress {
 const MyClasses = () => {
   const { user } = useAuth();
   const [enrollments, setEnrollments] = useState<EnrolledClass[]>([]);
+  const [classCourses, setClassCourses] = useState<Record<string, ClassCourse[]>>({});
   const [progress, setProgress] = useState<Record<string, ClassProgress>>({});
   const [loading, setLoading] = useState(true);
 
@@ -41,54 +46,92 @@ const MyClasses = () => {
       // Fetch enrollments
       const { data: enrollmentsData } = await supabase
         .from('enrollments')
-        .select('id, class_id, status, classes(id, name, description, courses(id, title))')
+        .select('id, class_id, status, classes(id, name, description)')
         .eq('status', 'approved');
 
-      if (enrollmentsData) {
+      if (enrollmentsData && enrollmentsData.length > 0) {
         setEnrollments(enrollmentsData as unknown as EnrolledClass[]);
 
-        // Fetch progress for each class
-        const progressMap: Record<string, ClassProgress> = {};
-        for (const enrollment of enrollmentsData) {
-          const cls = enrollment.classes as any;
-          if (cls?.courses?.id) {
-            // Count lessons in course
-            const { count: totalLessons } = await supabase
-              .from('lessons')
-              .select('*', { count: 'exact', head: true })
-              .eq('course_id', cls.courses.id);
+        // Fetch class_courses for each class
+        const classIds = enrollmentsData.map(e => e.class_id);
+        const { data: classCoursesData } = await supabase
+          .from('class_courses')
+          .select('class_id, course_id, courses(id, title)')
+          .in('class_id', classIds);
 
-            // Count completed lessons
-            const { count: completedLessons } = await supabase
-              .from('student_progress')
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
-              .eq('completed', true)
-              .not('lesson_id', 'is', null);
+        if (classCoursesData) {
+          const grouped = (classCoursesData as any[]).reduce((acc, cc) => {
+            if (!acc[cc.class_id]) acc[cc.class_id] = [];
+            acc[cc.class_id].push(cc);
+            return acc;
+          }, {} as Record<string, ClassCourse[]>);
+          setClassCourses(grouped);
 
-            // Count exercises
-            const { count: totalExercises } = await supabase
-              .from('exercises')
-              .select('*, lessons!inner(course_id)', { count: 'exact', head: true })
-              .eq('lessons.course_id', cls.courses.id);
+          // Calculate progress for each class
+          const progressMap: Record<string, ClassProgress> = {};
+          
+          for (const enrollment of enrollmentsData) {
+            const courses = grouped[enrollment.class_id] || [];
+            const courseIds = courses.map((c: ClassCourse) => c.course_id);
 
-            const { count: completedExercises } = await supabase
-              .from('student_progress')
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
-              .eq('completed', true)
-              .not('exercise_id', 'is', null);
+            if (courseIds.length > 0) {
+              // Get all lessons from these courses
+              const { data: lessons } = await supabase
+                .from('lessons')
+                .select('id')
+                .in('course_id', courseIds);
+              
+              const lessonIds = lessons?.map(l => l.id) || [];
 
-            progressMap[enrollment.class_id] = {
-              classId: enrollment.class_id,
-              totalLessons: totalLessons || 0,
-              completedLessons: completedLessons || 0,
-              totalExercises: totalExercises || 0,
-              completedExercises: completedExercises || 0,
-            };
+              // Get all exercises from these lessons
+              const { data: exercises } = lessonIds.length > 0 
+                ? await supabase
+                    .from('exercises')
+                    .select('id')
+                    .in('lesson_id', lessonIds)
+                : { data: [] };
+              
+              const exerciseIds = exercises?.map(e => e.id) || [];
+
+              // Get completed lessons
+              const { count: completedLessons } = lessonIds.length > 0
+                ? await supabase
+                    .from('student_progress')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('completed', true)
+                    .in('lesson_id', lessonIds)
+                : { count: 0 };
+
+              // Get completed exercises
+              const { count: completedExercises } = exerciseIds.length > 0
+                ? await supabase
+                    .from('student_progress')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('completed', true)
+                    .in('exercise_id', exerciseIds)
+                : { count: 0 };
+
+              progressMap[enrollment.class_id] = {
+                classId: enrollment.class_id,
+                totalLessons: lessonIds.length,
+                completedLessons: completedLessons || 0,
+                totalExercises: exerciseIds.length,
+                completedExercises: completedExercises || 0,
+              };
+            } else {
+              progressMap[enrollment.class_id] = {
+                classId: enrollment.class_id,
+                totalLessons: 0,
+                completedLessons: 0,
+                totalExercises: 0,
+                completedExercises: 0,
+              };
+            }
           }
+          setProgress(progressMap);
         }
-        setProgress(progressMap);
       }
 
       setLoading(false);
@@ -148,7 +191,8 @@ const MyClasses = () => {
             {enrollments.map((enrollment) => {
               const progressPercent = getProgressPercent(enrollment.class_id);
               const p = progress[enrollment.class_id];
-              const isCompleted = progressPercent === 100;
+              const isCompleted = progressPercent === 100 && p && (p.totalLessons + p.totalExercises) > 0;
+              const courses = classCourses[enrollment.class_id] || [];
               
               return (
                 <Card key={enrollment.id} className="glass border-border/50 hover:border-primary/30 transition-colors">
@@ -169,11 +213,16 @@ const MyClasses = () => {
                     {enrollment.classes.description && (
                       <CardDescription className="line-clamp-2">{enrollment.classes.description}</CardDescription>
                     )}
-                    {enrollment.classes.courses && (
-                      <Badge variant="secondary" className="w-fit mt-2 bg-accent/10 text-accent">
-                        <Layers className="w-3 h-3 mr-1" />
-                        {enrollment.classes.courses.title}
-                      </Badge>
+                    {/* Show linked courses */}
+                    {courses.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {courses.map((cc, idx) => (
+                          <Badge key={idx} variant="secondary" className="bg-accent/10 text-accent">
+                            <Layers className="w-3 h-3 mr-1" />
+                            {cc.courses?.title || "Curso"}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
                   </CardHeader>
                   <CardContent>
