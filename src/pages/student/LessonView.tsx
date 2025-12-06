@@ -53,7 +53,12 @@ const LessonView = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!lessonId || !user) return;
+      if (!lessonId || !user) {
+        console.log("LessonView: No lessonId or user", { lessonId, userId: user?.id });
+        return;
+      }
+
+      console.log("LessonView: Fetching lesson", lessonId);
 
       // Fetch lesson
       const { data: lessonData, error: lessonError } = await supabase
@@ -61,6 +66,8 @@ const LessonView = () => {
         .select('*')
         .eq('id', lessonId)
         .single();
+
+      console.log("LessonView: Lesson fetch result", { lessonData, lessonError });
 
       if (lessonError || !lessonData) {
         toast.error("Aula não encontrada");
@@ -79,23 +86,42 @@ const LessonView = () => {
         setModule(moduleData);
       }
 
-      // Check if user has access (enrolled in a class with this course)
-      const { data: enrollments } = await supabase
-        .from('enrollments')
-        .select('class_id')
-        .eq('student_id', user.id)
-        .eq('status', 'approved');
-
-      const classIds = (enrollments || []).map(e => e.class_id);
+      // Check if user has access - for now, allow access if lesson exists
+      // Teachers/Admins should also be able to preview
+      setIsAccessible(true);
       
-      if (classIds.length > 0) {
-        const { data: classCourses } = await supabase
-          .from('class_courses')
-          .select('course_id')
-          .in('class_id', classIds);
+      // For students, verify enrollment
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+      
+      console.log("LessonView: User role", userRole);
+      
+      if (userRole?.role === 'student') {
+        const { data: enrollments } = await supabase
+          .from('enrollments')
+          .select('class_id')
+          .eq('student_id', user.id)
+          .eq('status', 'approved');
 
-        const courseIds = (classCourses || []).map(cc => cc.course_id);
-        setIsAccessible(courseIds.includes(lessonData.course_id));
+        console.log("LessonView: Student enrollments", enrollments);
+
+        const classIds = (enrollments || []).map(e => e.class_id);
+        
+        if (classIds.length > 0) {
+          const { data: classCourses } = await supabase
+            .from('class_courses')
+            .select('course_id')
+            .in('class_id', classIds);
+
+          console.log("LessonView: Class courses", classCourses);
+          const courseIds = (classCourses || []).map(cc => cc.course_id);
+          setIsAccessible(courseIds.includes(lessonData.course_id));
+        } else {
+          setIsAccessible(false);
+        }
       }
 
       // Check if previous lessons in the module are completed
@@ -173,20 +199,25 @@ const LessonView = () => {
 
     setCompleting(true);
 
-    // Upsert progress
-    const { error } = await supabase
+    // Check if progress already exists
+    const { data: existingProgress } = await supabase
       .from('student_progress')
-      .upsert({
-        user_id: user.id,
-        lesson_id: lesson.id,
-        completed: true,
-        completed_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id,lesson_id'
-      });
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('lesson_id', lesson.id)
+      .maybeSingle();
 
-    if (error) {
-      // Try insert if upsert fails
+    if (existingProgress) {
+      // Update existing
+      await supabase
+        .from('student_progress')
+        .update({
+          completed: true,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', existingProgress.id);
+    } else {
+      // Insert new
       await supabase
         .from('student_progress')
         .insert({
