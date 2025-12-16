@@ -105,7 +105,7 @@ const TeacherDashboard = () => {
               </div>
               <span className="font-display text-lg font-bold text-foreground">JovemCoder</span>
             </Link>
-            <Badge variant="secondary" className="bg-accent/10 text-accent">{isAdmin ? "Admin" : "Professor"}</Badge>
+            <Badge variant="secondary" className="text-primary bg-secondary-foreground">{isAdmin ? "Admin" : "Professor"}</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Link to="/">
