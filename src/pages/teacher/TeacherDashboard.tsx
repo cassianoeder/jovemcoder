@@ -6,23 +6,46 @@ import { Badge } from "@/components/ui/badge";
 import { Users, BookOpen, FileText, Code2, ChevronRight, LogOut, UserCog, GraduationCap, Layers, School, Settings, Award, Home } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-
 const TeacherDashboard = () => {
-  const { profile, role, signOut } = useAuth();
-  const [stats, setStats] = useState({ lessons: 0, exercises: 0, classes: 0, courses: 0, modules: 0, pendingRequests: 0, students: 0 });
+  const {
+    profile,
+    role,
+    signOut
+  } = useAuth();
+  const [stats, setStats] = useState({
+    lessons: 0,
+    exercises: 0,
+    classes: 0,
+    courses: 0,
+    modules: 0,
+    pendingRequests: 0,
+    students: 0
+  });
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const fetchStats = async () => {
-      const [lessons, exercises, classes, courses, modules, requests, students] = await Promise.all([
-        supabase.from('lessons').select('*', { count: 'exact', head: true }),
-        supabase.from('exercises').select('*', { count: 'exact', head: true }),
-        supabase.from('classes').select('*', { count: 'exact', head: true }),
-        supabase.from('courses').select('*', { count: 'exact', head: true }),
-        supabase.from('modules').select('*', { count: 'exact', head: true }),
-        supabase.from('enrollment_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'student'),
-      ]);
+      const [lessons, exercises, classes, courses, modules, requests, students] = await Promise.all([supabase.from('lessons').select('*', {
+        count: 'exact',
+        head: true
+      }), supabase.from('exercises').select('*', {
+        count: 'exact',
+        head: true
+      }), supabase.from('classes').select('*', {
+        count: 'exact',
+        head: true
+      }), supabase.from('courses').select('*', {
+        count: 'exact',
+        head: true
+      }), supabase.from('modules').select('*', {
+        count: 'exact',
+        head: true
+      }), supabase.from('enrollment_requests').select('*', {
+        count: 'exact',
+        head: true
+      }).eq('status', 'pending'), supabase.from('user_roles').select('*', {
+        count: 'exact',
+        head: true
+      }).eq('role', 'student')]);
       setStats({
         lessons: lessons.count || 0,
         exercises: exercises.count || 0,
@@ -30,29 +53,49 @@ const TeacherDashboard = () => {
         courses: courses.count || 0,
         modules: modules.count || 0,
         pendingRequests: requests.count || 0,
-        students: students.count || 0,
+        students: students.count || 0
       });
       setLoading(false);
     };
     fetchStats();
   }, []);
-
   const isAdmin = role === 'admin';
-
-  const menuItems = [
-    { icon: School, label: "Turmas", count: stats.classes, href: "/teacher/classes", color: "bg-gradient-primary", badge: stats.pendingRequests > 0 ? stats.pendingRequests : null },
-    { icon: GraduationCap, label: "Cursos", count: stats.courses, href: "/teacher/courses", color: "bg-gradient-xp" },
-    { icon: Layers, label: "Módulos", count: stats.modules, href: "/teacher/modules", color: "bg-gradient-accent" },
-    { icon: BookOpen, label: "Aulas", count: stats.lessons, href: "/teacher/lessons", color: "bg-gradient-streak" },
-    { icon: FileText, label: "Exercícios", count: stats.exercises, href: "/teacher/exercises", color: "bg-gradient-level" },
-  ];
-
+  const menuItems = [{
+    icon: School,
+    label: "Turmas",
+    count: stats.classes,
+    href: "/teacher/classes",
+    color: "bg-gradient-primary",
+    badge: stats.pendingRequests > 0 ? stats.pendingRequests : null
+  }, {
+    icon: GraduationCap,
+    label: "Cursos",
+    count: stats.courses,
+    href: "/teacher/courses",
+    color: "bg-gradient-xp"
+  }, {
+    icon: Layers,
+    label: "Módulos",
+    count: stats.modules,
+    href: "/teacher/modules",
+    color: "bg-gradient-accent"
+  }, {
+    icon: BookOpen,
+    label: "Aulas",
+    count: stats.lessons,
+    href: "/teacher/lessons",
+    color: "bg-gradient-streak"
+  }, {
+    icon: FileText,
+    label: "Exercícios",
+    count: stats.exercises,
+    href: "/teacher/exercises",
+    color: "bg-gradient-level"
+  }];
   if (loading) {
     return <div className="min-h-screen bg-background dark flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
   }
-
-  return (
-    <div className="min-h-screen bg-background dark">
+  return <div className="min-h-screen bg-background dark">
       <header className="sticky top-0 z-50 glass border-b border-border/50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -66,7 +109,7 @@ const TeacherDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <Link to="/">
-              <Button variant="ghost" size="icon" title="Página inicial">
+              <Button variant="ghost" size="icon" title="Página inicial" className="text-secondary-foreground bg-primary">
                 <Home className="w-5 h-5" />
               </Button>
             </Link>
@@ -84,18 +127,15 @@ const TeacherDashboard = () => {
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {menuItems.map((item) => (
-            <Link key={item.href} to={item.href}>
+          {menuItems.map(item => <Link key={item.href} to={item.href}>
               <Card className="glass border-border/50 hover:border-primary/50 transition-all cursor-pointer group">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-4">
                     <div className={`w-14 h-14 rounded-xl ${item.color} flex items-center justify-center relative`}>
                       <item.icon className="w-7 h-7 text-white" />
-                      {item.badge && (
-                        <span className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground text-xs font-bold rounded-full flex items-center justify-center">
+                      {item.badge && <span className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground text-xs font-bold rounded-full flex items-center justify-center">
                           {item.badge}
-                        </span>
-                      )}
+                        </span>}
                     </div>
                     <div>
                       <p className="font-display text-2xl font-bold text-foreground">{item.count}</p>
@@ -105,8 +145,7 @@ const TeacherDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            </Link>)}
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -128,8 +167,7 @@ const TeacherDashboard = () => {
             </Card>
           </Link>
 
-          {isAdmin && (
-            <Card className="glass border-border/50 border-badge-gold/30">
+          {isAdmin && <Card className="glass border-border/50 border-badge-gold/30">
               <CardHeader className="pb-2">
                 <CardTitle className="font-display flex items-center gap-2 text-base">
                   <UserCog className="w-5 h-5 text-badge-gold" />
@@ -148,8 +186,7 @@ const TeacherDashboard = () => {
                 </Link>
                 <p className="text-xs text-muted-foreground mt-2">Cadastre professores e coordenadores</p>
               </CardContent>
-            </Card>
-          )}
+            </Card>}
 
           <Card className="glass border-border/50">
             <CardHeader className="pb-2">
@@ -173,8 +210,6 @@ const TeacherDashboard = () => {
           </Card>
         </div>
       </main>
-    </div>
-  );
+    </div>;
 };
-
 export default TeacherDashboard;
