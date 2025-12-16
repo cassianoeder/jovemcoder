@@ -4,43 +4,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import {
-  Flame,
-  Zap,
-  Trophy,
-  Target,
-  BookOpen,
-  Code2,
-  ChevronRight,
-  Star,
-  Calendar,
-  TrendingUp,
-  Play,
-  LogOut,
-  Users,
-  Award,
-  Home,
-} from "lucide-react";
+import { Flame, Zap, Trophy, Target, BookOpen, Code2, ChevronRight, Star, Calendar, TrendingUp, Play, LogOut, Users, Award, Home } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-
 interface StudentXP {
   total_xp: number;
   level: number;
 }
-
 interface Streak {
   current_streak: number;
   longest_streak: number;
 }
-
 interface Course {
   id: string;
   title: string;
   description: string;
   image_url: string;
 }
-
 interface StudentBadge {
   id: string;
   earned_at: string;
@@ -50,7 +30,6 @@ interface StudentBadge {
     rarity: string;
   };
 }
-
 interface DailyMission {
   id: string;
   title: string;
@@ -61,89 +40,77 @@ interface DailyMission {
     completed: boolean;
   }[];
 }
-
 const StudentDashboard = () => {
-  const { profile, signOut } = useAuth();
+  const {
+    profile,
+    signOut
+  } = useAuth();
   const [xpData, setXpData] = useState<StudentXP | null>(null);
   const [streakData, setStreakData] = useState<Streak | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [badges, setBadges] = useState<StudentBadge[]>([]);
   const [missions, setMissions] = useState<DailyMission[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch XP data
-        const { data: xp } = await supabase
-          .from('student_xp')
-          .select('total_xp, level')
-          .maybeSingle();
+        const {
+          data: xp
+        } = await supabase.from('student_xp').select('total_xp, level').maybeSingle();
         setXpData(xp);
 
         // Fetch streak data
-        const { data: streak } = await supabase
-          .from('streaks')
-          .select('current_streak, longest_streak')
-          .maybeSingle();
+        const {
+          data: streak
+        } = await supabase.from('streaks').select('current_streak, longest_streak').maybeSingle();
         setStreakData(streak);
 
         // Fetch courses
-        const { data: coursesData } = await supabase
-          .from('courses')
-          .select('*')
-          .order('order_index');
+        const {
+          data: coursesData
+        } = await supabase.from('courses').select('*').order('order_index');
         setCourses(coursesData || []);
 
         // Fetch badges
-        const { data: badgesData } = await supabase
-          .from('student_badges')
-          .select('id, earned_at, badges(name, icon, rarity)')
-          .order('earned_at', { ascending: false })
-          .limit(3);
+        const {
+          data: badgesData
+        } = await supabase.from('student_badges').select('id, earned_at, badges(name, icon, rarity)').order('earned_at', {
+          ascending: false
+        }).limit(3);
         setBadges(badgesData as StudentBadge[] || []);
 
         // Fetch daily missions with progress
-        const { data: missionsData } = await supabase
-          .from('daily_missions')
-          .select(`
+        const {
+          data: missionsData
+        } = await supabase.from('daily_missions').select(`
             id,
             title,
             target_count,
             xp_reward,
             student_missions(progress, completed)
-          `)
-          .eq('active', true);
+          `).eq('active', true);
         setMissions(missionsData as DailyMission[] || []);
-
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, []);
-
   const xpToNextLevel = (xpData?.level || 1) * 500;
   const currentXp = xpData?.total_xp || 0;
-  const xpProgress = (currentXp % 500) / 500 * 100;
-
+  const xpProgress = currentXp % 500 / 500 * 100;
   const handleSignOut = async () => {
     await signOut();
   };
-
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background dark flex items-center justify-center">
+    return <div className="min-h-screen bg-background dark flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="min-h-screen bg-background dark">
+  return <div className="min-h-screen bg-background dark">
       {/* Header */}
       <header className="sticky top-0 z-50 glass border-b border-border/50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
@@ -174,7 +141,7 @@ const StudentDashboard = () => {
             </div>
 
             <Link to="/">
-              <Button variant="ghost" size="icon" title="Página inicial">
+              <Button variant="ghost" size="icon" title="Página inicial" className="text-secondary-foreground bg-primary">
                 <Home className="w-5 h-5" />
               </Button>
             </Link>
@@ -271,7 +238,7 @@ const StudentDashboard = () => {
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Próximo nível</p>
                 <p className="font-display text-lg font-semibold text-foreground">
-                  {500 - (currentXp % 500)} XP restantes
+                  {500 - currentXp % 500} XP restantes
                 </p>
               </div>
             </div>
@@ -293,29 +260,19 @@ const StudentDashboard = () => {
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
-              {missions.length > 0 ? missions.map((mission) => {
-                const progress = mission.student_missions?.[0]?.progress || 0;
-                const completed = mission.student_missions?.[0]?.completed || false;
-                return (
-                  <div
-                    key={mission.id}
-                    className={`p-4 rounded-xl border ${
-                      completed ? "bg-primary/5 border-primary/20" : "bg-card border-border/50"
-                    }`}
-                  >
+              {missions.length > 0 ? missions.map(mission => {
+              const progress = mission.student_missions?.[0]?.progress || 0;
+              const completed = mission.student_missions?.[0]?.completed || false;
+              return <div key={mission.id} className={`p-4 rounded-xl border ${completed ? "bg-primary/5 border-primary/20" : "bg-card border-border/50"}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
-                        {completed ? (
-                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                        {completed ? <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                             <span className="text-white text-sm">✓</span>
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                          </div> : <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
                             <span className="text-muted-foreground text-sm">
                               {progress}/{mission.target_count}
                             </span>
-                          </div>
-                        )}
+                          </div>}
                         <span className={`font-medium ${completed ? "text-primary" : "text-foreground"}`}>
                           {mission.title}
                         </span>
@@ -324,14 +281,9 @@ const StudentDashboard = () => {
                         +{mission.xp_reward} XP
                       </Badge>
                     </div>
-                    {!completed && (
-                      <Progress value={(progress / mission.target_count) * 100} className="h-2" />
-                    )}
-                  </div>
-                );
-              }) : (
-                <p className="text-muted-foreground text-center py-4">Nenhuma missão disponível</p>
-              )}
+                    {!completed && <Progress value={progress / mission.target_count * 100} className="h-2" />}
+                  </div>;
+            }) : <p className="text-muted-foreground text-center py-4">Nenhuma missão disponível</p>}
             </CardContent>
           </Card>
 
@@ -344,37 +296,17 @@ const StudentDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {badges.length > 0 ? badges.map((badge) => (
-                <div
-                  key={badge.id}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50"
-                >
+              {badges.length > 0 ? badges.map(badge => <div key={badge.id} className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50">
                   <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl">
                     {badge.badges?.icon || "🏆"}
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{badge.badges?.name}</p>
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs ${
-                        badge.badges?.rarity === "epic"
-                          ? "bg-level/10 text-level"
-                          : badge.badges?.rarity === "rare"
-                          ? "bg-info/10 text-info"
-                          : badge.badges?.rarity === "legendary"
-                          ? "bg-badge-gold/10 text-badge-gold"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {badge.badges?.rarity === "epic" ? "Épico" : 
-                       badge.badges?.rarity === "rare" ? "Raro" : 
-                       badge.badges?.rarity === "legendary" ? "Lendário" : "Comum"}
+                    <Badge variant="secondary" className={`text-xs ${badge.badges?.rarity === "epic" ? "bg-level/10 text-level" : badge.badges?.rarity === "rare" ? "bg-info/10 text-info" : badge.badges?.rarity === "legendary" ? "bg-badge-gold/10 text-badge-gold" : "bg-muted text-muted-foreground"}`}>
+                      {badge.badges?.rarity === "epic" ? "Épico" : badge.badges?.rarity === "rare" ? "Raro" : badge.badges?.rarity === "legendary" ? "Lendário" : "Comum"}
                     </Badge>
                   </div>
-                </div>
-              )) : (
-                <p className="text-muted-foreground text-center py-4">Complete exercícios para ganhar badges!</p>
-              )}
+                </div>) : <p className="text-muted-foreground text-center py-4">Complete exercícios para ganhar badges!</p>}
               <Button variant="ghost" className="w-full mt-2">
                 Ver todas conquistas
                 <ChevronRight className="w-4 h-4 ml-1" />
@@ -438,8 +370,7 @@ const StudentDashboard = () => {
         </div>
 
         {/* Continue Learning */}
-        {courses.length > 0 && (
-          <Card className="glass border-border/50 mt-6">
+        {courses.length > 0 && <Card className="glass border-border/50 mt-6">
             <CardHeader>
               <CardTitle className="font-display flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-primary" />
@@ -448,11 +379,7 @@ const StudentDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {courses.map((course) => (
-                  <div
-                    key={course.id}
-                    className="p-4 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-colors group cursor-pointer"
-                  >
+                {courses.map(course => <div key={course.id} className="p-4 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-colors group cursor-pointer">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl">
                         {course.image_url}
@@ -466,15 +393,11 @@ const StudentDashboard = () => {
                       <Play className="w-4 h-4 mr-2" />
                       Começar
                     </Button>
-                  </div>
-                ))}
+                  </div>)}
               </div>
             </CardContent>
-          </Card>
-        )}
+          </Card>}
       </main>
-    </div>
-  );
+    </div>;
 };
-
 export default StudentDashboard;
