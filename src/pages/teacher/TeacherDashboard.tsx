@@ -113,7 +113,7 @@ const TeacherDashboard = () => {
                 <Home className="w-5 h-5" />
               </Button>
             </Link>
-            <Button variant="ghost" size="icon" onClick={signOut} title="Sair">
+            <Button variant="ghost" size="icon" onClick={signOut} title="Sair" className="text-secondary-foreground bg-destructive">
               <LogOut className="w-5 h-5" />
             </Button>
           </div>
