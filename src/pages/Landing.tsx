@@ -99,24 +99,7 @@ start()`}</pre>
       </section>
 
       {/* FEATURES */}
-      <section id="features" className="py-24 px-4 bg-muted/30">
-        <div className="container mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-3xl font-bold text-foreground mb-4">Por que JovemCoder?</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">Aprendizado progressivo, gamificado e focado em prática real.</p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[{ icon: Zap, title: "XP e níveis", desc: "Progresso visível" },{ icon: Target, title: "Missões", desc: "Objetivos claros" },{ icon: Trophy, title: "Conquistas", desc: "Motivação contínua" },{ icon: Users, title: "Ranking", desc: "Competição saudável" },{ icon: BookOpen, title: "Prática real", desc: "Código de verdade" }].map((f, i) => (
-              <div key={i} className="rounded-xl border border-border p-6 bg-background">
-                <f.icon className="w-6 h-6 text-primary mb-4" />
-                <h3 className="font-semibold text-foreground mb-2">{f.title}</h3>
-                <p className="text-sm text-muted-foreground">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      
 
       {/* CTA */}
       <section className="py-24 px-4">
