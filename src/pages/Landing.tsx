@@ -28,10 +28,6 @@ const Landing = () => {
             </span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Recursos</a>
-          </div>
-
           <div className="flex items-center gap-3">
             <Link to="/auth">
             <Button
