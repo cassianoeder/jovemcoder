@@ -34,8 +34,14 @@ const Landing = () => {
 
           <div className="flex items-center gap-3">
             <Link to="/auth">
-              <Button variant="ghost">Entrar</Button>
-            </Link>
+            <Button
+              variant="ghost"
+              className="border border-border text-foreground hover:bg-muted"
+            >
+              Entrar
+            </Button>
+          </Link>
+
             <Link to="/auth?mode=register">
               <Button>Começar Grátis</Button>
             </Link>
