@@ -115,10 +115,10 @@ const StudentDashboard = () => {
       <header className="sticky top-0 z-50 glass border-b border-border/50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center bg-primary text-secondary-foreground">
               <Code2 className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-display text-lg font-bold text-foreground">JovemCoder</span>
+            <span className="font-display text-lg font-bold text-primary">JovemCoder</span>
           </Link>
 
           <div className="flex items-center gap-4">
