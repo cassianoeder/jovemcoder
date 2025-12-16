@@ -86,10 +86,18 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center px-4 bg-background">
       <div className="w-full max-w-md">
 
-        {/* Logo */}
-        <Link to="/" className="block text-center mb-10">
-          <span className="font-display text-2xl font-bold text-foreground">Jovem<span className="text-primary">Coder</span></span>
-        </Link>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-10">
+          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            ← Voltar
+          </Link>
+
+          <Link to="/" className="font-display text-2xl font-bold text-foreground">
+            Jovem<span className="text-primary">Coder</span>
+          </Link>
+
+          <div className="w-10" />
+        </div>
 
         <Card className="border-border shadow-sm">
           <CardHeader className="text-center pb-2">
